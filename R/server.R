@@ -23,7 +23,15 @@ library(igraph)
 library(shinyBS)
 library(scExtras)
 library(slingshot)
+library(aws.s3)
 source("functions.R")
+
+#set aws environment
+Sys.setenv(
+  "AWS_ACCESS_KEY_ID" = "xxx",
+  "AWS_SECRET_ACCESS_KEY" = "Lxxx",
+  "AWS_DEFAULT_REGION" = "xxx"
+)
 
 #Specify user-ids and passwords
 auth=read.csv("data/authentication.csv")
@@ -119,7 +127,14 @@ server <- function(input, output,session) {
     selectInput("projects","Select a project",as.list(sort(as.character(prj))))
   })
   
-  
+  #Get Project list and populate drop-down
+  output$projectlist2 = renderUI({
+    filelist= data.table::rbindlist(get_bucket(bucket = "ipf-consortium-data-sharing",max = Inf))
+    filelist= filelist %>% separate(Key, c("Key","datatype"),sep="[.]")
+    filelist = filelist[filelist$datatype %in% c("RDS","rds","Rds"),]
+    filelist=filelist[!duplicated(filelist$Key),]
+    selectInput("projects2","Select a project",as.list(sort(as.character(filelist$Key))))
+  })
   #display project list in Dashboard
   datasetTable <- reactive({
     user=input$username
@@ -145,23 +160,34 @@ server <- function(input, output,session) {
   
   #Load Rdata
   fileload <- reactive({
+    if(input$projtype == 'existing'){
       file=read.csv('data/param.csv',stringsAsFactors = F)
       filetype=file$filetype[file$projects==input$projects]
       if(filetype=="RData"){
         inFile = paste('data/',as.character(input$projects),'.RData',sep = '')
-        #s3load(inFile,bucket=bucket)
         load(inFile)
       }else if(filetype=="RDS"){
         inFile = paste('data/',as.character(input$projects),'.RDS',sep = '')
-        #scrna <- s3readRDS(object = file_names[file_names$Key == inFile, "Key"], bucket = bucket)
         scrna <- readRDS(inFile)
-      }
+      }}
+    else if(input$projtype == 'repos'){
+      inFile=paste0(input$projects2,".RDS",sep="")
+      print(inFile)
+      withProgress(session = session, message = 'Reading Data...',detail = 'Please Wait...',{
+      scrna <- s3readRDS(object = inFile, bucket = "ipf-consortium-data-sharing")
+      })
+    }
     return(scrna)
   })
   
   #Create variable for project name
   projectname = reactive({
-      project= input$projects
+    if(input$projtype == 'existing'){
+      project= input$projects}
+    else if(input$projtype == 'repos'){
+      project= input$projects2
+    }
+      
     return(project)
   })
   ###################################################
@@ -172,11 +198,17 @@ server <- function(input, output,session) {
   
   #Get all information from the scrna object (input file) and generate some basic project summary for the summary
   prjsumm <- reactive({
+    if(input$projtype == 'existing'){
     prj= read.csv("data/param.csv")
     prj=prj[prj$projects==projectname(),]
     pname=projectname()
       pdesc=prj$desc
-      porg=prj$organism
+      porg=prj$organism}
+    else if(input$projtype == 'repos'){
+      pname=projectname()
+      pdesc="NA"
+      porg="NA"
+    }
     scrna=fileload()
     if("filterstats" %in% names(scrna@misc)){
       numcells.nf = scrna@misc$filterstats$TotalSamples
