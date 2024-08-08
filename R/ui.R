@@ -22,7 +22,15 @@ ui <- dashboardPage(
                    )),
                    sidebarMenu(
                      menuItem("Project List", tabName = "dashboard", icon = icon("dashboard")),
-                    uiOutput("projectlist"),
+                     radioButtons("projtype", label = "Project type",choices = list("Existing" = "existing", "Read from repository" = "repos"),selected = "existing"),
+                     conditionalPanel(
+                       condition = "input.projtype == 'existing'",
+                       uiOutput("projectlist"),
+                     ),
+                     conditionalPanel(
+                       condition = "input.projtype == 'repos'",
+                       uiOutput("projectlist2"),
+                     ),
                      menuItem('Project Summary', tabName = 'summ', icon = icon('hand-o-right')),
                      menuItem('Dimension Reduction Plots', tabName = 'tplot', icon = icon('hand-o-right'),
                               menuSubItem("Compare Plots", tabName = "tsneplot"),
